@@ -1,34 +1,34 @@
 import os
-import sys
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 import discord
 from discord.ext import commands
 from datetime import datetime
 import asyncio
 
-# Load bot token from environment variable
+# Load token from environment variable
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# Your actual Discord IDs
+# Discord bot constants
 GUILD_ID = 1393376630684254359
 REQUEST_CHANNEL_ID = 1394073906708742236
 TARGET_MESSAGE_ID = 1394074089320218624
 TRIGGER_EMOJI = "📩"
 
-# Flask web server for UptimeRobot
+# Flask web server for keepalive
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"✅ Ping received at {now} UTC", flush=True)
+    # Get IP from X-Forwarded-For if behind proxy (Render), otherwise remote_addr
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    print(f"✅ Ping received at {now} UTC from {ip}", flush=True)
     return "✅ I'm alive!", 200
 
-# Optional: suppress /favicon.ico 404s
 @app.route("/favicon.ico")
 def favicon():
-    return '', 204
+    return "", 204
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -39,7 +39,7 @@ def keep_alive():
     thread.daemon = True
     thread.start()
 
-# Bot setup
+# Discord bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
@@ -71,7 +71,7 @@ async def on_raw_reaction_add(payload):
         def check(msg):
             return msg.author == user and msg.channel.id == channel.id
 
-        msg = await bot.wait_for('message', check=check, timeout=60)
+        msg = await bot.wait_for("message", check=check, timeout=60)
 
         embed = discord.Embed(
             title="New Request",
@@ -91,14 +91,13 @@ async def on_raw_reaction_add(payload):
     except asyncio.TimeoutError:
         try:
             await prompt.delete()
-        except Exception:
+        except:
             pass
         await channel.send(f"⚠️ {user.mention}, request timed out. Please try again.")
-
     except Exception as e:
         print(f"⚠️ Error: {e}", flush=True)
         await channel.send(f"⚠️ {user.mention}, something went wrong.")
 
-# Start the Flask server and bot
+# Start Flask and bot
 keep_alive()
 bot.run(TOKEN)
