@@ -1,39 +1,45 @@
 import os
-import asyncio
+import sys
 from flask import Flask
 from threading import Thread
 import discord
 from discord.ext import commands
+from datetime import datetime
+import asyncio
 
-# Load the Discord bot token from the environment
+# Load bot token from environment variable
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# 🔧 Your actual Discord IDs
+# Your actual Discord IDs
 GUILD_ID = 1393376630684254359
 REQUEST_CHANNEL_ID = 1394073906708742236
 TARGET_MESSAGE_ID = 1394074089320218624
 TRIGGER_EMOJI = "📩"
 
-# ---------- Flask app to keep the bot alive ----------
+# Flask web server for UptimeRobot
 app = Flask(__name__)
 
-ping_count = 0
-
-@app.route('/')
+@app.route("/")
 def home():
-    global ping_count
-    ping_count += 1
-    print(f"✅ Ping #{ping_count} received via Flask")
-    return f"✅ I'm alive! Ping count: {ping_count}"
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"✅ Ping received at {now} UTC", flush=True)
+    return "✅ I'm alive!", 200
+
+# Optional: suppress /favicon.ico 404s
+@app.route("/favicon.ico")
+def favicon():
+    return '', 204
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
-    Thread(target=run_flask).start()
+    thread = Thread(target=run_flask)
+    thread.daemon = True
+    thread.start()
 
-# ---------- Discord bot setup ----------
+# Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
@@ -61,43 +67,38 @@ async def on_raw_reaction_add(payload):
 
     try:
         prompt = await channel.send(f"{user.mention}, please type your request now:")
-    except Exception as e:
-        print(f"❌ Failed to send prompt: {e}")
-        return
 
-    def check(msg):
-        return msg.author == user and msg.channel.id == channel.id
+        def check(msg):
+            return msg.author == user and msg.channel.id == channel.id
 
-    try:
         msg = await bot.wait_for('message', check=check, timeout=60)
 
-        request_channel = bot.get_channel(REQUEST_CHANNEL_ID)
         embed = discord.Embed(
             title="New Request",
             description=msg.content,
             color=discord.Color.blue()
         )
         embed.set_footer(text=f"From: {user.display_name} ({user})")
+
+        request_channel = bot.get_channel(REQUEST_CHANNEL_ID)
         await request_channel.send(embed=embed)
 
         await msg.delete()
         await prompt.delete()
+
         await channel.send(f"✅ {user.mention}, your request has been submitted.")
 
     except asyncio.TimeoutError:
         try:
             await prompt.delete()
-        except discord.NotFound:
+        except Exception:
             pass
         await channel.send(f"⚠️ {user.mention}, request timed out. Please try again.")
-    except Exception as e:
-        print(f"⚠️ Unexpected error: {e}")
-        try:
-            await prompt.delete()
-        except discord.NotFound:
-            pass
-        await channel.send(f"⚠️ {user.mention}, something went wrong. Please try again.")
 
-# ---------- Run Flask + Bot ----------
+    except Exception as e:
+        print(f"⚠️ Error: {e}", flush=True)
+        await channel.send(f"⚠️ {user.mention}, something went wrong.")
+
+# Start the Flask server and bot
 keep_alive()
 bot.run(TOKEN)
