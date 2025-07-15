@@ -19,6 +19,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
+    print("✅ Ping received via Flask")
     return "✅ I'm alive!"
 
 def run_flask():
