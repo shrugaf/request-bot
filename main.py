@@ -1,18 +1,20 @@
+import os
+import asyncio
 from flask import Flask
 from threading import Thread
 import discord
 from discord.ext import commands
-import os
 
+# Load the Discord bot token from the environment
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# 🔧 YOUR REAL DISCORD IDs
+# 🔧 Your actual Discord IDs
 GUILD_ID = 1393376630684254359
 REQUEST_CHANNEL_ID = 1394073906708742236
 TARGET_MESSAGE_ID = 1394074089320218624
 TRIGGER_EMOJI = "📩"
 
-# Flask app to keep the bot alive
+# ---------- Flask app to keep the bot alive ----------
 app = Flask(__name__)
 
 @app.route('/')
@@ -26,7 +28,7 @@ def run_flask():
 def keep_alive():
     Thread(target=run_flask).start()
 
-# Bot setup
+# ---------- Discord bot setup ----------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
@@ -49,10 +51,14 @@ async def on_raw_reaction_add(payload):
     channel = bot.get_channel(payload.channel_id)
     user = guild.get_member(payload.user_id)
 
-    if user.bot:
+    if user is None or user.bot:
         return
 
-    prompt = await channel.send(f"{user.mention}, please type your request now:")
+    try:
+        prompt = await channel.send(f"{user.mention}, please type your request now:")
+    except Exception as e:
+        print(f"❌ Failed to send prompt: {e}")
+        return
 
     def check(msg):
         return msg.author == user and msg.channel.id == channel.id
@@ -73,10 +79,20 @@ async def on_raw_reaction_add(payload):
         await prompt.delete()
         await channel.send(f"✅ {user.mention}, your request has been submitted.")
 
+    except asyncio.TimeoutError:
+        try:
+            await prompt.delete()
+        except discord.NotFound:
+            pass
+        await channel.send(f"⚠️ {user.mention}, request timed out. Please try again.")
     except Exception as e:
-        await prompt.delete()
-        await channel.send(f"⚠️ {user.mention}, request timed out or something went wrong.")
-        print(f"Error: {e}")
+        print(f"⚠️ Unexpected error: {e}")
+        try:
+            await prompt.delete()
+        except discord.NotFound:
+            pass
+        await channel.send(f"⚠️ {user.mention}, something went wrong. Please try again.")
 
+# ---------- Run Flask + Bot ----------
 keep_alive()
 bot.run(TOKEN)
