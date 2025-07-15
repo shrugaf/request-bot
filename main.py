@@ -17,10 +17,14 @@ TRIGGER_EMOJI = "📩"
 # ---------- Flask app to keep the bot alive ----------
 app = Flask(__name__)
 
+ping_count = 0
+
 @app.route('/')
 def home():
-    print("✅ Ping received via Flask")
-    return "✅ I'm alive!"
+    global ping_count
+    ping_count += 1
+    print(f"✅ Ping #{ping_count} received via Flask")
+    return f"✅ I'm alive! Ping count: {ping_count}"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
